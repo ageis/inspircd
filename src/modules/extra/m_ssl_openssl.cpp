@@ -90,6 +90,7 @@ char* get_error()
 
 static int OnVerify(int preverify_ok, X509_STORE_CTX* ctx);
 static void StaticSSLInfoCallback(const SSL* ssl, int where, int rc);
+static void ParseSSLError(int err, StreamSocket* user);
 
 namespace OpenSSL
 {
@@ -140,21 +141,11 @@ namespace OpenSSL
 		{
 			// Sane default options for OpenSSL see https://www.openssl.org/docs/ssl/SSL_CTX_set_options.html
 			// and when choosing a cipher, use the server's preferences instead of the client preferences.
-			long opts = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION | SSL_OP_CIPHER_SERVER_PREFERENCE | SSL_OP_SINGLE_DH_USE;
-			// Only turn options on if they exist
-#ifdef SSL_OP_SINGLE_ECDH_USE
-			opts |= SSL_OP_SINGLE_ECDH_USE;
-#endif
-#ifdef SSL_OP_NO_TICKET
-			opts |= SSL_OP_NO_TICKET;
-#endif
+            long opts = SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION | SSL_OP_CIPHER_SERVER_PREFERENCE | SSL_OP_COOKIE_EXCHANGE | SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS | SSL_OP_LEGACY_SERVER_CONNECT | SSL_OP_MICROSOFT_BIG_SSLV3_BUFFER | SSL_OP_NETSCAPE_REUSE_CIPHER_CHANGE_BUG | SSL_OP_NO_ANTI_REPLAY | SSL_OP_NO_COMPRESSION | SSL_OP_NO_SSLv3 | SSL_OP_NO_TLSv1 | SSL_OP_SAFARI_ECDHE_ECDSA_BUG | SSL_OP_SINGLE_DH_USE | SSL_OP_SINGLE_ECDH_USE | SSL_OP_SSLEAY_080_CLIENT_DH_BUG | SSL_OP_SSLREF2_REUSE_CERT_TYPE_BUG | SSL_OP_TLS_BLOCK_PADDING_BUG | SSL_OP_TLSEXT_PADDING | SSL_OP_NO_TICKET;
+            ctx_options = SSL_CTX_set_options(ctx, opts);
 
-			ctx_options = SSL_CTX_set_options(ctx, opts);
+            long mode = SSL_MODE_ENABLE_PARTIAL_WRITE | SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER |  SSL_MODE_RELEASE_BUFFERS | SSL_MODE_NO_AUTO_CHAIN;
 
-			long mode = SSL_MODE_ENABLE_PARTIAL_WRITE | SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER;
-#ifdef SSL_MODE_RELEASE_BUFFERS
-			mode |= SSL_MODE_RELEASE_BUFFERS;
-#endif
 			SSL_CTX_set_mode(ctx, mode);
 			SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
 			SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_OFF);
@@ -336,14 +327,6 @@ namespace OpenSSL
 		{
 			long setoptions = tag->getInt(ctxname + "setoptions", 0);
 			long clearoptions = tag->getInt(ctxname + "clearoptions", 0);
-#ifdef SSL_OP_NO_COMPRESSION
-			if (!tag->getBool("compression", false)) // Disable compression by default
-				setoptions |= SSL_OP_NO_COMPRESSION;
-#endif
-			// Disable TLSv1.0 by default.
-			if (!tag->getBool("tlsv1", false))
-				setoptions |= SSL_OP_NO_TLSv1;
-
 			if (!setoptions && !clearoptions)
 				return; // Nothing to do
 
@@ -522,6 +505,8 @@ class OpenSSLIOHook : public SSLIOHook
 		if (ret < 0)
 		{
 			int err = SSL_get_error(sess, ret);
+
+			ParseSSLError(err, user);
 
 			if (err == SSL_ERROR_WANT_READ)
 			{
@@ -741,6 +726,8 @@ class OpenSSLIOHook : public SSLIOHook
 			{
 				int err = SSL_get_error(sess, ret);
 
+				ParseSSLError(err, user);
+
 				if (err == SSL_ERROR_WANT_READ)
 				{
 					SocketEngine::ChangeEventMask(user, FD_WANT_POLL_READ);
@@ -800,6 +787,8 @@ class OpenSSLIOHook : public SSLIOHook
 			{
 				int err = SSL_get_error(sess, ret);
 
+				ParseSSLError(err, user);
+
 				if (err == SSL_ERROR_WANT_WRITE)
 				{
 					SocketEngine::ChangeEventMask(user, FD_WANT_SINGLE_WRITE);
@@ -849,6 +838,126 @@ static void StaticSSLInfoCallback(const SSL* ssl, int where, int rc)
 {
 	OpenSSLIOHook* hook = static_cast<OpenSSLIOHook*>(SSL_get_ex_data(ssl, exdataindex));
 	hook->SSLInfoCallback(where, rc);
+}
+
+static void ParseSSLError(int err, StreamSocket* user)
+{
+	const std::string errname = "";
+	if (err == SSL_R_BAD_CHANGE_CIPHER_SPEC) {
+		const std::string errname = "SSL_R_BAD_CHANGE_CIPHER_SPEC";
+	} else if (err == SSL_R_NO_SUITABLE_KEY_SHARE) {
+		const std::string errname = "SSL_R_NO_SUITABLE_KEY_SHARE";
+	} else if (err == SSL_R_BLOCK_CIPHER_PAD_IS_WRONG) {
+		const std::string errname = "SSL_R_BLOCK_CIPHER_PAD_IS_WRONG";
+	} else if (err == SSL_R_CALLBACK_FAILED) {
+		const std::string errname = "SSL_R_CALLBACK_FAILED";
+	} else if (err == SSL_R_CERT_CB_ERROR) {
+		const std::string errname = "SSL_R_CERT_CB_ERROR";
+	} else if (err == SSL_R_CLIENTHELLO_TLSEXT) {
+		const std::string errname = "SSL_R_CLIENTHELLO_TLSEXT";
+	} else if (err == SSL_R_DECRYPTION_FAILED_OR_BAD_RECORD_MAC) {
+		const std::string errname = "SSL_R_DECRYPTION_FAILED_OR_BAD_RECORD_MAC";
+	} else if (err == SSL_R_DIGEST_CHECK_FAILED) {
+		const std::string errname = "SSL_R_DIGEST_CHECK_FAILED";
+	} else if (err == SSL_R_ERROR_IN_RECEIVED_CIPHER_LIST) {
+		const std::string errname = "SSL_R_ERROR_IN_RECEIVED_CIPHER_LIST";
+	} else if (err == SSL_R_EXCESSIVE_MESSAGE_SIZE) {
+		const std::string errname = "SSL_R_EXCESSIVE_MESSAGE_SIZE";
+	} else if (err == SSL_R_HTTP_REQUEST) {
+		const std::string errname = "SSL_R_HTTP_REQUEST";
+	} else if (err == SSL_R_HTTPS_PROXY_REQUEST) {
+		const std::string errname = "SSL_R_HTTPS_PROXY_REQUEST";
+	} else if (err == SSL_R_INAPPROPRIATE_FALLBACK) {
+		const std::string errname = "SSL_R_INAPPROPRIATE_FALLBACK";
+	} else if (err == SSL_R_LENGTH_MISMATCH) {
+		const std::string errname = "SSL_R_LENGTH_MISMATCH";
+	} else if (err == SSL_R_NO_CIPHERS_SPECIFIED) {
+		const std::string errname = "SSL_R_NO_CIPHERS_SPECIFIED";
+	} else if (err == SSL_R_NO_COMPRESSION_SPECIFIED) {
+		const std::string errname = "SSL_R_NO_COMPRESSION_SPECIFIED";
+	} else if (err == SSL_R_NO_SHARED_CIPHER) {
+		const std::string errname = "SSL_R_NO_SHARED_CIPHER";
+	} else if (err == SSL_R_NO_SUITABLE_KEY_SHARE) {
+		const std::string errname = "SSL_R_NO_SUITABLE_KEY_SHARE";
+	} else if (err == SSL_R_NO_SUITABLE_SIGNATURE_ALGORITHM) {
+		const std::string errname = "SSL_R_NO_SUITABLE_SIGNATURE_ALGORITHM";
+	} else if (err == SSL_R_PARSE_TLSEXT) {
+		const std::string errname = "SSL_R_PARSE_TLSEXT";
+	} else if (err == SSL_R_RECORD_LENGTH_MISMATCH) {
+		const std::string errname = "SSL_R_RECORD_LENGTH_MISMATCH";
+	} else if (err == SSL_R_RENEGOTIATE_EXT_TOO_LONG) {
+		const std::string errname = "SSL_R_RENEGOTIATE_EXT_TOO_LONG";
+	} else if (err == SSL_R_RENEGOTIATION_ENCODING_ERR) {
+		const std::string errname = "SSL_R_RENEGOTIATION_ENCODING_ERR";
+	} else if (err == SSL_R_RENEGOTIATION_MISMATCH) {
+		const std::string errname = "SSL_R_RENEGOTIATION_MISMATCH";
+	} else if (err == SSL_R_SCSV_RECEIVED_WHEN_RENEGOTIATING) {
+		const std::string errname = "SSL_R_SCSV_RECEIVED_WHEN_RENEGOTIATING";
+	} else if (err == SSL_R_SSLV3_ALERT_BAD_CERTIFICATE) {
+		const std::string errname = "SSL_R_SSLV3_ALERT_BAD_CERTIFICATE";
+	} else if (err == SSL_R_SSLV3_ALERT_BAD_RECORD_MAC) {
+		const std::string errname = "SSL_R_SSLV3_ALERT_BAD_RECORD_MAC";
+	} else if (err == SSL_R_SSLV3_ALERT_CERTIFICATE_EXPIRED) {
+		const std::string errname = "SSL_R_SSLV3_ALERT_CERTIFICATE_EXPIRED";
+	} else if (err == SSL_R_SSLV3_ALERT_CERTIFICATE_REVOKED) {
+		const std::string errname = "SSL_R_SSLV3_ALERT_CERTIFICATE_REVOKED";
+	} else if (err == SSL_R_SSLV3_ALERT_CERTIFICATE_UNKNOWN) {
+		const std::string errname = "SSL_R_SSLV3_ALERT_CERTIFICATE_UNKNOWN";
+	} else if (err == SSL_R_SSLV3_ALERT_DECOMPRESSION_FAILURE) {
+		const std::string errname = "SSL_R_SSLV3_ALERT_DECOMPRESSION_FAILURE";
+	} else if (err == SSL_R_SSLV3_ALERT_HANDSHAKE_FAILURE) {
+		const std::string errname = "SSL_R_SSLV3_ALERT_HANDSHAKE_FAILURE";
+	} else if (err == SSL_R_SSLV3_ALERT_ILLEGAL_PARAMETER) {
+		const std::string errname = "SSL_R_SSLV3_ALERT_ILLEGAL_PARAMETER";
+	} else if (err == SSL_R_SSLV3_ALERT_NO_CERTIFICATE) {
+		const std::string errname = "SSL_R_SSLV3_ALERT_NO_CERTIFICATE";
+	} else if (err == SSL_R_SSLV3_ALERT_UNEXPECTED_MESSAGE) {
+		const std::string errname = "SSL_R_SSLV3_ALERT_UNEXPECTED_MESSAGE";
+	} else if (err == SSL_R_SSLV3_ALERT_UNSUPPORTED_CERTIFICATE) {
+		const std::string errname = "SSL_R_SSLV3_ALERT_UNSUPPORTED_CERTIFICATE";
+	} else if (err == SSL_R_TLSV1_ALERT_ACCESS_DENIED) {
+		const std::string errname = "SSL_R_TLSV1_ALERT_ACCESS_DENIED";
+	} else if (err == SSL_R_TLSV1_ALERT_DECODE_ERROR) {
+		const std::string errname = "SSL_R_TLSV1_ALERT_DECODE_ERROR";
+	} else if (err == SSL_R_TLSV1_ALERT_DECRYPT_ERROR) {
+		const std::string errname = "SSL_R_TLSV1_ALERT_DECRYPT_ERROR";
+	} else if (err == SSL_R_TLSV1_ALERT_DECRYPTION_FAILED) {
+		const std::string errname = "SSL_R_TLSV1_ALERT_DECRYPTION_FAILED";
+	} else if (err == SSL_R_TLSV1_ALERT_EXPORT_RESTRICTION) {
+		const std::string errname = "SSL_R_TLSV1_ALERT_EXPORT_RESTRICTION";
+	} else if (err == SSL_R_TLSV1_ALERT_INSUFFICIENT_SECURITY) {
+		const std::string errname = "SSL_R_TLSV1_ALERT_INSUFFICIENT_SECURITY";
+	} else if (err == SSL_R_TLSV1_ALERT_INTERNAL_ERROR) {
+		const std::string errname = "SSL_R_TLSV1_ALERT_INTERNAL_ERROR";
+	} else if (err == SSL_R_TLSV1_ALERT_NO_RENEGOTIATION) {
+		const std::string errname = "SSL_R_TLSV1_ALERT_NO_RENEGOTIATION";
+	} else if (err == SSL_R_TLSV1_ALERT_PROTOCOL_VERSION) {
+		const std::string errname = "SSL_R_TLSV1_ALERT_PROTOCOL_VERSION";
+	} else if (err == SSL_R_TLSV1_ALERT_RECORD_OVERFLOW) {
+		const std::string errname = "SSL_R_TLSV1_ALERT_RECORD_OVERFLOW";
+	} else if (err == SSL_R_TLSV1_ALERT_UNKNOWN_CA) {
+		const std::string errname = "SSL_R_TLSV1_ALERT_UNKNOWN_CA";
+	} else if (err == SSL_R_TLSV1_ALERT_USER_CANCELLED) {
+		const std::string errname = "SSL_R_TLSV1_ALERT_USER_CANCELLED";
+	} else if (err == SSL_R_UNEXPECTED_MESSAGE) {
+		const std::string errname = "SSL_R_UNEXPECTED_MESSAGE";
+	} else if (err == SSL_R_UNEXPECTED_RECORD) {
+		const std::string errname = "SSL_R_UNEXPECTED_RECORD";
+	} else if (err == SSL_R_UNKNOWN_ALERT_TYPE) {
+		const std::string errname = "SSL_R_UNKNOWN_ALERT_TYPE";
+	} else if (err == SSL_R_UNKNOWN_PROTOCOL) {
+		const std::string errname = "SSL_R_UNKNOWN_PROTOCOL";
+	} else if (err == SSL_R_UNSAFE_LEGACY_RENEGOTIATION_DISABLED) {
+		const std::string errname = "SSL_R_UNSAFE_LEGACY_RENEGOTIATION_DISABLED";
+	} else if (err == SSL_R_UNSUPPORTED_PROTOCOL) {
+		const std::string errname = "SSL_R_UNSUPPORTED_PROTOCOL";
+	} else if (err == SSL_R_VERSION_TOO_LOW) {
+		const std::string errname = "SSL_R_VERSION_TOO_LOW";
+	} else if (err == SSL_R_WRONG_VERSION_NUMBER) {
+		const std::string errname = "SSL_R_WRONG_VERSION_NUMBER";
+	}
+	ServerInstance->Logs->Log(MODNAME, LOG_DEFAULT, "OpenSSL error: \"%s\"", errname.c_str());
+	user->SetError(errname.c_str());
 }
 
 static int OpenSSL::BIOMethod::write(BIO* bio, const char* buffer, int size)
