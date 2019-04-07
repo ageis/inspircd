@@ -386,7 +386,7 @@ InspIRCd::InspIRCd(int argc, char** argv) :
 		<< "TO START INSPIRCD AS ROOT, HIT CTRL+C NOW AND RESTART" << std::endl
 		<< "THE PROGRAM AS A NORMAL USER. YOU HAVE BEEN WARNED!" << std::endl << std::endl
 		<< "InspIRCd starting in 20 seconds, ctrl+c to abort..." << std::endl;
-		sleep(20);
+		sleep(1);
 	}
 #endif
 

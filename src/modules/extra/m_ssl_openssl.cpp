@@ -64,7 +64,7 @@
 # define BIO_set_init(BIO, VALUE) BIO->init = VALUE;
 
 // These functions have been renamed in OpenSSL 1.1.
-# define OpenSSL_version SSLeay_version
+# define OpenSSL_version OpenSSL_version(OPENSSL_VERSION)
 # define X509_getm_notAfter X509_get_notAfter
 # define X509_getm_notBefore X509_get_notBefore
 # define OPENSSL_init_ssl(OPTIONS, SETTINGS) \
@@ -72,7 +72,9 @@
 	SSL_load_error_strings();
 
 // These macros have been renamed in OpenSSL 1.1.
-# define OPENSSL_VERSION SSLEAY_VERSION
+# define OPENSSL_VERSION_NUMBER  0x1010102fL
+# define OPENSSL_VERSION  0x1010102fL
+# define OPENSSL_VERSION_TEXT    "OpenSSL 1.1.1b  26 Feb 2019"
 
 #else
 # define INSPIRCD_OPENSSL_OPAQUE_BIO
@@ -140,21 +142,11 @@ namespace OpenSSL
 		{
 			// Sane default options for OpenSSL see https://www.openssl.org/docs/ssl/SSL_CTX_set_options.html
 			// and when choosing a cipher, use the server's preferences instead of the client preferences.
-			long opts = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION | SSL_OP_CIPHER_SERVER_PREFERENCE | SSL_OP_SINGLE_DH_USE;
-			// Only turn options on if they exist
-#ifdef SSL_OP_SINGLE_ECDH_USE
-			opts |= SSL_OP_SINGLE_ECDH_USE;
-#endif
-#ifdef SSL_OP_NO_TICKET
-			opts |= SSL_OP_NO_TICKET;
-#endif
-
+			long opts = SSL_OP_CIPHER_SERVER_PREFERENCE | SSL_OP_SINGLE_DH_USE | SSL_OP_NETSCAPE_REUSE_CIPHER_CHANGE_BUG | SSL_OP_NO_ANTI_REPLAY | SSL_MODE_RELEASE_BUFFERS | SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS | SSL_OP_LEGACY_SERVER_CONNECT | SSL_OP_TLSEXT_PADDING | SSL_OP_SINGLE_ECDH_USE | SSL_OP_COOKIE_EXCHANGE | SSL_OP_SSLEAY_080_CLIENT_DH_BUG | SSL_OP_TLS_D5_BUG | SSL_OP_TLS_BLOCK_PADDING_BUG | SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_TLSv1 |  SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION | SSL_OP_NO_COMPRESSION | SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION | SSL_OP_SSLREF2_REUSE_CERT_TYPE_BUG | SSL_OP_SSLEAY_080_CLIENT_DH_BUG | SSL_OP_MICROSOFT_BIG_SSLV3_BUFFER | SSL_OP_SAFARI_ECDHE_ECDSA_BUG | SSL_OP_TLS_D5_BUG;
 			ctx_options = SSL_CTX_set_options(ctx, opts);
 
-			long mode = SSL_MODE_ENABLE_PARTIAL_WRITE | SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER;
-#ifdef SSL_MODE_RELEASE_BUFFERS
-			mode |= SSL_MODE_RELEASE_BUFFERS;
-#endif
+			long mode = SSL_MODE_ENABLE_PARTIAL_WRITE | SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER |  SSL_MODE_RELEASE_BUFFERS | SSL_MODE_NO_AUTO_CHAIN;
+
 			SSL_CTX_set_mode(ctx, mode);
 			SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
 			SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_OFF);
@@ -336,14 +328,6 @@ namespace OpenSSL
 		{
 			long setoptions = tag->getInt(ctxname + "setoptions", 0);
 			long clearoptions = tag->getInt(ctxname + "clearoptions", 0);
-#ifdef SSL_OP_NO_COMPRESSION
-			if (!tag->getBool("compression", false)) // Disable compression by default
-				setoptions |= SSL_OP_NO_COMPRESSION;
-#endif
-			// Disable TLSv1.0 by default.
-			if (!tag->getBool("tlsv1", false))
-				setoptions |= SSL_OP_NO_TLSv1;
-
 			if (!setoptions && !clearoptions)
 				return; // Nothing to do
 
@@ -522,6 +506,185 @@ class OpenSSLIOHook : public SSLIOHook
 		if (ret < 0)
 		{
 			int err = SSL_get_error(sess, ret);
+
+			if (err == SSL_R_BAD_CHANGE_CIPHER_SPEC) {
+				user->SetError("SSL_R_BAD_CHANGE_CIPHER_SPEC");
+				return -1;
+			} else if (err == SSL_R_NO_SUITABLE_KEY_SHARE) {
+				user->SetError("SSL_R_NO_SUITABLE_KEY_SHARE");
+				return -1;
+			} else if (err == SSL_R_BLOCK_CIPHER_PAD_IS_WRONG) {
+				user->SetError("SSL_R_BLOCK_CIPHER_PAD_IS_WRONG");
+				return -1;
+			} else if (err == SSL_R_CALLBACK_FAILED) {
+				user->SetError("SSL_R_CALLBACK_FAILED");
+				return -1;
+			} else if (err == SSL_R_CERT_CB_ERROR) {
+				user->SetError("SSL_R_CERT_CB_ERROR");
+				return -1;
+			} else if (err == SSL_R_CLIENTHELLO_TLSEXT) {
+				user->SetError("SSL_R_CLIENTHELLO_TLSEXT");
+				return -1;
+			} else if (err == SSL_R_DECRYPTION_FAILED_OR_BAD_RECORD_MAC) {
+				user->SetError("SSL_R_DECRYPTION_FAILED_OR_BAD_RECORD_MAC");
+				return -1;
+			} else if (err == SSL_R_DIGEST_CHECK_FAILED) {
+				user->SetError("SSL_R_DIGEST_CHECK_FAILED");
+				return -1;
+			} else if (err == SSL_R_ERROR_IN_RECEIVED_CIPHER_LIST) {
+				user->SetError("SSL_R_ERROR_IN_RECEIVED_CIPHER_LIST");
+				return -1;
+			} else if (err == SSL_R_EXCESSIVE_MESSAGE_SIZE) {
+				user->SetError("SSL_R_EXCESSIVE_MESSAGE_SIZE");
+				return -1;
+			} else if (err == SSL_R_HTTP_REQUEST) {
+				user->SetError("SSL_R_HTTP_REQUEST");
+				return -1;
+			} else if (err == SSL_R_HTTPS_PROXY_REQUEST) {
+				user->SetError("SSL_R_HTTPS_PROXY_REQUEST");
+				return -1;
+			} else if (err == SSL_R_INAPPROPRIATE_FALLBACK) {
+				user->SetError("SSL_R_INAPPROPRIATE_FALLBACK");
+				return -1;
+			} else if (err == SSL_R_LENGTH_MISMATCH) {
+				user->SetError("SSL_R_LENGTH_MISMATCH");
+				return -1;
+			//} else if (err == SSL_R_NO_CIPHERS_PASSED) {
+			//	user->SetError("SSL_R_NO_CIPHERS_PASSED");
+			//  return -1;
+			} else if (err == SSL_R_NO_CIPHERS_SPECIFIED) {
+				user->SetError("SSL_R_NO_CIPHERS_SPECIFIED");
+				return -1;
+			//} else if (err == SSL_R_NO_COMMON_SIGNATURE_ALGORITHMS) {
+			//	user->SetError("SSL_R_NO_COMMON_SIGNATURE_ALGORITHMS");
+			//  return -1;
+			} else if (err == SSL_R_NO_COMPRESSION_SPECIFIED) {
+				user->SetError("SSL_R_NO_COMPRESSION_SPECIFIED");
+				return -1;
+			} else if (err == SSL_R_NO_SHARED_CIPHER) {
+				user->SetError("SSL_R_NO_SHARED_CIPHER");
+				return -1;
+			//} else if (err == SSL_R_NO_SHARED_GROUP) {
+			//	user->SetError("SSL_R_NO_SHARED_GROUP");
+			//  return -1;
+			} else if (err == SSL_R_NO_SUITABLE_KEY_SHARE) {
+				user->SetError("SSL_R_NO_SUITABLE_KEY_SHARE");
+				return -1;
+			} else if (err == SSL_R_NO_SUITABLE_SIGNATURE_ALGORITHM) {
+				user->SetError("SSL_R_NO_SUITABLE_SIGNATURE_ALGORITHM");
+				return -1;
+			} else if (err == SSL_R_PARSE_TLSEXT) {
+				user->SetError("SSL_R_PARSE_TLSEXT");
+				return -1;
+			} else if (err == SSL_R_RECORD_LENGTH_MISMATCH) {
+				user->SetError("SSL_R_RECORD_LENGTH_MISMATCH");
+				return -1;
+			} else if (err == SSL_R_RENEGOTIATE_EXT_TOO_LONG) {
+				user->SetError("SSL_R_RENEGOTIATE_EXT_TOO_LONG");
+				return -1;
+			} else if (err == SSL_R_RENEGOTIATION_ENCODING_ERR) {
+				user->SetError("SSL_R_RENEGOTIATION_ENCODING_ERR");
+				return -1;
+			} else if (err == SSL_R_RENEGOTIATION_MISMATCH) {
+				user->SetError("SSL_R_RENEGOTIATION_MISMATCH");
+				return -1;
+			} else if (err == SSL_R_SCSV_RECEIVED_WHEN_RENEGOTIATING) {
+				user->SetError("SSL_R_SCSV_RECEIVED_WHEN_RENEGOTIATING");
+				return -1;
+			} else if (err == SSL_R_SSLV3_ALERT_BAD_CERTIFICATE) {
+				user->SetError("SSL_R_SSLV3_ALERT_BAD_CERTIFICATE");
+				return -1;
+			} else if (err == SSL_R_SSLV3_ALERT_BAD_RECORD_MAC) {
+				user->SetError("SSL_R_SSLV3_ALERT_BAD_RECORD_MAC");
+				return -1;
+			} else if (err == SSL_R_SSLV3_ALERT_CERTIFICATE_EXPIRED) {
+				user->SetError("SSL_R_SSLV3_ALERT_CERTIFICATE_EXPIRED");
+				return -1;
+			} else if (err == SSL_R_SSLV3_ALERT_CERTIFICATE_REVOKED) {
+				user->SetError("SSL_R_SSLV3_ALERT_CERTIFICATE_REVOKED");
+				return -1;
+			} else if (err == SSL_R_SSLV3_ALERT_CERTIFICATE_UNKNOWN) {
+				user->SetError("SSL_R_SSLV3_ALERT_CERTIFICATE_UNKNOWN");
+				return -1;
+			} else if (err == SSL_R_SSLV3_ALERT_DECOMPRESSION_FAILURE) {
+				user->SetError("SSL_R_SSLV3_ALERT_DECOMPRESSION_FAILURE");
+				return -1;
+			} else if (err == SSL_R_SSLV3_ALERT_HANDSHAKE_FAILURE) {
+				user->SetError("SSL_R_SSLV3_ALERT_HANDSHAKE_FAILURE");
+				return -1;
+			} else if (err == SSL_R_SSLV3_ALERT_ILLEGAL_PARAMETER) {
+				user->SetError("SSL_R_SSLV3_ALERT_ILLEGAL_PARAMETER");
+				return -1;
+			} else if (err == SSL_R_SSLV3_ALERT_NO_CERTIFICATE) {
+				user->SetError("SSL_R_SSLV3_ALERT_NO_CERTIFICATE");
+				return -1;
+			} else if (err == SSL_R_SSLV3_ALERT_UNEXPECTED_MESSAGE) {
+				user->SetError("SSL_R_SSLV3_ALERT_UNEXPECTED_MESSAGE");
+				return -1;
+			} else if (err == SSL_R_SSLV3_ALERT_UNSUPPORTED_CERTIFICATE) {
+				user->SetError("SSL_R_SSLV3_ALERT_UNSUPPORTED_CERTIFICATE");
+				return -1;
+			} else if (err == SSL_R_TLSV1_ALERT_ACCESS_DENIED) {
+				user->SetError("SSL_R_TLSV1_ALERT_ACCESS_DENIED");
+				return -1;
+			} else if (err == SSL_R_TLSV1_ALERT_DECODE_ERROR) {
+				user->SetError("SSL_R_TLSV1_ALERT_DECODE_ERROR");
+				return -1;
+			} else if (err == SSL_R_TLSV1_ALERT_DECRYPT_ERROR) {
+				user->SetError("SSL_R_TLSV1_ALERT_DECRYPT_ERROR");
+				return -1;
+			} else if (err == SSL_R_TLSV1_ALERT_DECRYPTION_FAILED) {
+				user->SetError("SSL_R_TLSV1_ALERT_DECRYPTION_FAILED");
+				return -1;
+			} else if (err == SSL_R_TLSV1_ALERT_EXPORT_RESTRICTION) {
+				user->SetError("SSL_R_TLSV1_ALERT_EXPORT_RESTRICTION");
+				return -1;
+			} else if (err == SSL_R_TLSV1_ALERT_INSUFFICIENT_SECURITY) {
+				user->SetError("SSL_R_TLSV1_ALERT_INSUFFICIENT_SECURITY");
+				return -1;
+			} else if (err == SSL_R_TLSV1_ALERT_INTERNAL_ERROR) {
+				user->SetError("SSL_R_TLSV1_ALERT_INTERNAL_ERROR");
+				return -1;
+			} else if (err == SSL_R_TLSV1_ALERT_NO_RENEGOTIATION) {
+				user->SetError("SSL_R_TLSV1_ALERT_NO_RENEGOTIATION");
+				return -1;
+			} else if (err == SSL_R_TLSV1_ALERT_PROTOCOL_VERSION) {
+				user->SetError("SSL_R_TLSV1_ALERT_PROTOCOL_VERSION");
+				return -1;
+			} else if (err == SSL_R_TLSV1_ALERT_RECORD_OVERFLOW) {
+				user->SetError("SSL_R_TLSV1_ALERT_RECORD_OVERFLOW");
+				return -1;
+			} else if (err == SSL_R_TLSV1_ALERT_UNKNOWN_CA) {
+				user->SetError("SSL_R_TLSV1_ALERT_UNKNOWN_CA");
+				return -1;
+			} else if (err == SSL_R_TLSV1_ALERT_USER_CANCELLED) {
+				user->SetError("SSL_R_TLSV1_ALERT_USER_CANCELLED");
+				return -1;
+			} else if (err == SSL_R_UNEXPECTED_MESSAGE) {
+				user->SetError("SSL_R_UNEXPECTED_MESSAGE");
+				return -1;
+			} else if (err == SSL_R_UNEXPECTED_RECORD) {
+				user->SetError("SSL_R_UNEXPECTED_RECORD");
+				return -1;
+			} else if (err == SSL_R_UNKNOWN_ALERT_TYPE) {
+				user->SetError("SSL_R_UNKNOWN_ALERT_TYPE");
+				return -1;
+			} else if (err == SSL_R_UNKNOWN_PROTOCOL) {
+				user->SetError("SSL_R_UNKNOWN_PROTOCOL");
+				return -1;
+			} else if (err == SSL_R_UNSAFE_LEGACY_RENEGOTIATION_DISABLED) {
+				user->SetError("SSL_R_UNSAFE_LEGACY_RENEGOTIATION_DISABLED");
+				return -1;
+			} else if (err == SSL_R_UNSUPPORTED_PROTOCOL) {
+				user->SetError("SSL_R_UNSUPPORTED_PROTOCOL");
+				return -1;
+			} else if (err == SSL_R_VERSION_TOO_LOW) {
+				user->SetError("SSL_R_VERSION_TOO_LOW");
+				return -1;
+			} else if (err == SSL_R_WRONG_VERSION_NUMBER) {
+				user->SetError("SSL_R_WRONG_VERSION_NUMBER");
+				return -1;
+			}
 
 			if (err == SSL_ERROR_WANT_READ)
 			{
@@ -740,6 +903,185 @@ class OpenSSLIOHook : public SSLIOHook
 			else // if (ret < 0)
 			{
 				int err = SSL_get_error(sess, ret);
+				
+				if (err == SSL_R_BAD_CHANGE_CIPHER_SPEC) {
+					user->SetError("SSL_R_BAD_CHANGE_CIPHER_SPEC");
+				    return -1;
+				} else if (err == SSL_R_NO_SUITABLE_KEY_SHARE) {
+					user->SetError("SSL_R_NO_SUITABLE_KEY_SHARE");
+				    return -1;
+				} else if (err == SSL_R_BLOCK_CIPHER_PAD_IS_WRONG) {
+					user->SetError("SSL_R_BLOCK_CIPHER_PAD_IS_WRONG");
+				    return -1;
+				} else if (err == SSL_R_CALLBACK_FAILED) {
+					user->SetError("SSL_R_CALLBACK_FAILED");
+				    return -1;
+				} else if (err == SSL_R_CERT_CB_ERROR) {
+					user->SetError("SSL_R_CERT_CB_ERROR");
+				    return -1;
+				} else if (err == SSL_R_CLIENTHELLO_TLSEXT) {
+					user->SetError("SSL_R_CLIENTHELLO_TLSEXT");
+				    return -1;
+				} else if (err == SSL_R_DECRYPTION_FAILED_OR_BAD_RECORD_MAC) {
+					user->SetError("SSL_R_DECRYPTION_FAILED_OR_BAD_RECORD_MAC");
+				    return -1;
+				} else if (err == SSL_R_DIGEST_CHECK_FAILED) {
+					user->SetError("SSL_R_DIGEST_CHECK_FAILED");
+				    return -1;
+				} else if (err == SSL_R_ERROR_IN_RECEIVED_CIPHER_LIST) {
+					user->SetError("SSL_R_ERROR_IN_RECEIVED_CIPHER_LIST");
+				    return -1;
+				} else if (err == SSL_R_EXCESSIVE_MESSAGE_SIZE) {
+					user->SetError("SSL_R_EXCESSIVE_MESSAGE_SIZE");
+				    return -1;
+				} else if (err == SSL_R_HTTP_REQUEST) {
+					user->SetError("SSL_R_HTTP_REQUEST");
+				    return -1;
+				} else if (err == SSL_R_HTTPS_PROXY_REQUEST) {
+					user->SetError("SSL_R_HTTPS_PROXY_REQUEST");
+				    return -1;
+				} else if (err == SSL_R_INAPPROPRIATE_FALLBACK) {
+					user->SetError("SSL_R_INAPPROPRIATE_FALLBACK");
+				    return -1;
+				} else if (err == SSL_R_LENGTH_MISMATCH) {
+					user->SetError("SSL_R_LENGTH_MISMATCH");
+				    return -1;
+				//} else if (err == SSL_R_NO_CIPHERS_PASSED) {
+				//	user->SetError("SSL_R_NO_CIPHERS_PASSED");
+				//  return -1;
+				} else if (err == SSL_R_NO_CIPHERS_SPECIFIED) {
+					user->SetError("SSL_R_NO_CIPHERS_SPECIFIED");
+				    return -1;
+				//} else if (err == SSL_R_NO_COMMON_SIGNATURE_ALGORITHMS) {
+				//	user->SetError("SSL_R_NO_COMMON_SIGNATURE_ALGORITHMS");
+				//  return -1;
+				} else if (err == SSL_R_NO_COMPRESSION_SPECIFIED) {
+					user->SetError("SSL_R_NO_COMPRESSION_SPECIFIED");
+				    return -1;
+				} else if (err == SSL_R_NO_SHARED_CIPHER) {
+					user->SetError("SSL_R_NO_SHARED_CIPHER");
+				    return -1;
+				//} else if (err == SSL_R_NO_SHARED_GROUP) {
+				//	user->SetError("SSL_R_NO_SHARED_GROUP");
+				//  return -1;
+				} else if (err == SSL_R_NO_SUITABLE_KEY_SHARE) {
+					user->SetError("SSL_R_NO_SUITABLE_KEY_SHARE");
+				    return -1;
+				} else if (err == SSL_R_NO_SUITABLE_SIGNATURE_ALGORITHM) {
+					user->SetError("SSL_R_NO_SUITABLE_SIGNATURE_ALGORITHM");
+				    return -1;
+				} else if (err == SSL_R_PARSE_TLSEXT) {
+					user->SetError("SSL_R_PARSE_TLSEXT");
+				    return -1;
+				} else if (err == SSL_R_RECORD_LENGTH_MISMATCH) {
+					user->SetError("SSL_R_RECORD_LENGTH_MISMATCH");
+				    return -1;
+				} else if (err == SSL_R_RENEGOTIATE_EXT_TOO_LONG) {
+					user->SetError("SSL_R_RENEGOTIATE_EXT_TOO_LONG");
+				    return -1;
+				} else if (err == SSL_R_RENEGOTIATION_ENCODING_ERR) {
+					user->SetError("SSL_R_RENEGOTIATION_ENCODING_ERR");
+				    return -1;
+				} else if (err == SSL_R_RENEGOTIATION_MISMATCH) {
+					user->SetError("SSL_R_RENEGOTIATION_MISMATCH");
+				    return -1;
+				} else if (err == SSL_R_SCSV_RECEIVED_WHEN_RENEGOTIATING) {
+					user->SetError("SSL_R_SCSV_RECEIVED_WHEN_RENEGOTIATING");
+				    return -1;
+				} else if (err == SSL_R_SSLV3_ALERT_BAD_CERTIFICATE) {
+					user->SetError("SSL_R_SSLV3_ALERT_BAD_CERTIFICATE");
+				    return -1;
+				} else if (err == SSL_R_SSLV3_ALERT_BAD_RECORD_MAC) {
+					user->SetError("SSL_R_SSLV3_ALERT_BAD_RECORD_MAC");
+				    return -1;
+				} else if (err == SSL_R_SSLV3_ALERT_CERTIFICATE_EXPIRED) {
+					user->SetError("SSL_R_SSLV3_ALERT_CERTIFICATE_EXPIRED");
+				    return -1;
+				} else if (err == SSL_R_SSLV3_ALERT_CERTIFICATE_REVOKED) {
+					user->SetError("SSL_R_SSLV3_ALERT_CERTIFICATE_REVOKED");
+				    return -1;
+				} else if (err == SSL_R_SSLV3_ALERT_CERTIFICATE_UNKNOWN) {
+					user->SetError("SSL_R_SSLV3_ALERT_CERTIFICATE_UNKNOWN");
+				    return -1;
+				} else if (err == SSL_R_SSLV3_ALERT_DECOMPRESSION_FAILURE) {
+					user->SetError("SSL_R_SSLV3_ALERT_DECOMPRESSION_FAILURE");
+				    return -1;
+				} else if (err == SSL_R_SSLV3_ALERT_HANDSHAKE_FAILURE) {
+					user->SetError("SSL_R_SSLV3_ALERT_HANDSHAKE_FAILURE");
+				    return -1;
+				} else if (err == SSL_R_SSLV3_ALERT_ILLEGAL_PARAMETER) {
+					user->SetError("SSL_R_SSLV3_ALERT_ILLEGAL_PARAMETER");
+				    return -1;
+				} else if (err == SSL_R_SSLV3_ALERT_NO_CERTIFICATE) {
+					user->SetError("SSL_R_SSLV3_ALERT_NO_CERTIFICATE");
+				    return -1;
+				} else if (err == SSL_R_SSLV3_ALERT_UNEXPECTED_MESSAGE) {
+					user->SetError("SSL_R_SSLV3_ALERT_UNEXPECTED_MESSAGE");
+				    return -1;
+				} else if (err == SSL_R_SSLV3_ALERT_UNSUPPORTED_CERTIFICATE) {
+					user->SetError("SSL_R_SSLV3_ALERT_UNSUPPORTED_CERTIFICATE");
+				    return -1;
+				} else if (err == SSL_R_TLSV1_ALERT_ACCESS_DENIED) {
+					user->SetError("SSL_R_TLSV1_ALERT_ACCESS_DENIED");
+				    return -1;
+				} else if (err == SSL_R_TLSV1_ALERT_DECODE_ERROR) {
+					user->SetError("SSL_R_TLSV1_ALERT_DECODE_ERROR");
+				    return -1;
+				} else if (err == SSL_R_TLSV1_ALERT_DECRYPT_ERROR) {
+					user->SetError("SSL_R_TLSV1_ALERT_DECRYPT_ERROR");
+				    return -1;
+				} else if (err == SSL_R_TLSV1_ALERT_DECRYPTION_FAILED) {
+					user->SetError("SSL_R_TLSV1_ALERT_DECRYPTION_FAILED");
+				    return -1;
+				} else if (err == SSL_R_TLSV1_ALERT_EXPORT_RESTRICTION) {
+					user->SetError("SSL_R_TLSV1_ALERT_EXPORT_RESTRICTION");
+				    return -1;
+				} else if (err == SSL_R_TLSV1_ALERT_INSUFFICIENT_SECURITY) {
+					user->SetError("SSL_R_TLSV1_ALERT_INSUFFICIENT_SECURITY");
+				    return -1;
+				} else if (err == SSL_R_TLSV1_ALERT_INTERNAL_ERROR) {
+					user->SetError("SSL_R_TLSV1_ALERT_INTERNAL_ERROR");
+				    return -1;
+				} else if (err == SSL_R_TLSV1_ALERT_NO_RENEGOTIATION) {
+					user->SetError("SSL_R_TLSV1_ALERT_NO_RENEGOTIATION");
+				    return -1;
+				} else if (err == SSL_R_TLSV1_ALERT_PROTOCOL_VERSION) {
+					user->SetError("SSL_R_TLSV1_ALERT_PROTOCOL_VERSION");
+				    return -1;
+				} else if (err == SSL_R_TLSV1_ALERT_RECORD_OVERFLOW) {
+					user->SetError("SSL_R_TLSV1_ALERT_RECORD_OVERFLOW");
+				    return -1;
+				} else if (err == SSL_R_TLSV1_ALERT_UNKNOWN_CA) {
+					user->SetError("SSL_R_TLSV1_ALERT_UNKNOWN_CA");
+				    return -1;
+				} else if (err == SSL_R_TLSV1_ALERT_USER_CANCELLED) {
+					user->SetError("SSL_R_TLSV1_ALERT_USER_CANCELLED");
+				    return -1;
+				} else if (err == SSL_R_UNEXPECTED_MESSAGE) {
+					user->SetError("SSL_R_UNEXPECTED_MESSAGE");
+				    return -1;
+				} else if (err == SSL_R_UNEXPECTED_RECORD) {
+					user->SetError("SSL_R_UNEXPECTED_RECORD");
+				    return -1;
+				} else if (err == SSL_R_UNKNOWN_ALERT_TYPE) {
+					user->SetError("SSL_R_UNKNOWN_ALERT_TYPE");
+				    return -1;
+				} else if (err == SSL_R_UNKNOWN_PROTOCOL) {
+					user->SetError("SSL_R_UNKNOWN_PROTOCOL");
+				    return -1;
+				} else if (err == SSL_R_UNSAFE_LEGACY_RENEGOTIATION_DISABLED) {
+					user->SetError("SSL_R_UNSAFE_LEGACY_RENEGOTIATION_DISABLED");
+				    return -1;
+				} else if (err == SSL_R_UNSUPPORTED_PROTOCOL) {
+					user->SetError("SSL_R_UNSUPPORTED_PROTOCOL");
+				    return -1;
+				} else if (err == SSL_R_VERSION_TOO_LOW) {
+					user->SetError("SSL_R_VERSION_TOO_LOW");
+				    return -1;
+				} else if (err == SSL_R_WRONG_VERSION_NUMBER) {
+					user->SetError("SSL_R_WRONG_VERSION_NUMBER");
+				    return -1;
+				}
 
 				if (err == SSL_ERROR_WANT_READ)
 				{
@@ -799,6 +1141,185 @@ class OpenSSLIOHook : public SSLIOHook
 			else // if (ret < 0)
 			{
 				int err = SSL_get_error(sess, ret);
+
+				if (err == SSL_R_BAD_CHANGE_CIPHER_SPEC) {
+					user->SetError("SSL_R_BAD_CHANGE_CIPHER_SPEC");
+				    return -1;
+				} else if (err == SSL_R_NO_SUITABLE_KEY_SHARE) {
+					user->SetError("SSL_R_NO_SUITABLE_KEY_SHARE");
+				    return -1;
+				} else if (err == SSL_R_BLOCK_CIPHER_PAD_IS_WRONG) {
+					user->SetError("SSL_R_BLOCK_CIPHER_PAD_IS_WRONG");
+				    return -1;
+				} else if (err == SSL_R_CALLBACK_FAILED) {
+					user->SetError("SSL_R_CALLBACK_FAILED");
+				    return -1;
+				} else if (err == SSL_R_CERT_CB_ERROR) {
+					user->SetError("SSL_R_CERT_CB_ERROR");
+				    return -1;
+				} else if (err == SSL_R_CLIENTHELLO_TLSEXT) {
+					user->SetError("SSL_R_CLIENTHELLO_TLSEXT");
+				    return -1;
+				} else if (err == SSL_R_DECRYPTION_FAILED_OR_BAD_RECORD_MAC) {
+					user->SetError("SSL_R_DECRYPTION_FAILED_OR_BAD_RECORD_MAC");
+				    return -1;
+				} else if (err == SSL_R_DIGEST_CHECK_FAILED) {
+					user->SetError("SSL_R_DIGEST_CHECK_FAILED");
+				    return -1;
+				} else if (err == SSL_R_ERROR_IN_RECEIVED_CIPHER_LIST) {
+					user->SetError("SSL_R_ERROR_IN_RECEIVED_CIPHER_LIST");
+				    return -1;
+				} else if (err == SSL_R_EXCESSIVE_MESSAGE_SIZE) {
+					user->SetError("SSL_R_EXCESSIVE_MESSAGE_SIZE");
+				    return -1;
+				} else if (err == SSL_R_HTTP_REQUEST) {
+					user->SetError("SSL_R_HTTP_REQUEST");
+				    return -1;
+				} else if (err == SSL_R_HTTPS_PROXY_REQUEST) {
+					user->SetError("SSL_R_HTTPS_PROXY_REQUEST");
+				    return -1;
+				} else if (err == SSL_R_INAPPROPRIATE_FALLBACK) {
+					user->SetError("SSL_R_INAPPROPRIATE_FALLBACK");
+				    return -1;
+				} else if (err == SSL_R_LENGTH_MISMATCH) {
+					user->SetError("SSL_R_LENGTH_MISMATCH");
+				    return -1;
+				//} else if (err == SSL_R_NO_CIPHERS_PASSED) {
+				//	user->SetError("SSL_R_NO_CIPHERS_PASSED");
+				//  return -1;
+				} else if (err == SSL_R_NO_CIPHERS_SPECIFIED) {
+					user->SetError("SSL_R_NO_CIPHERS_SPECIFIED");
+				    return -1;
+				//} else if (err == SSL_R_NO_COMMON_SIGNATURE_ALGORITHMS) {
+				//	user->SetError("SSL_R_NO_COMMON_SIGNATURE_ALGORITHMS");
+				//  return -1;
+				} else if (err == SSL_R_NO_COMPRESSION_SPECIFIED) {
+					user->SetError("SSL_R_NO_COMPRESSION_SPECIFIED");
+				    return -1;
+				} else if (err == SSL_R_NO_SHARED_CIPHER) {
+					user->SetError("SSL_R_NO_SHARED_CIPHER");
+				    return -1;
+				//} else if (err == SSL_R_NO_SHARED_GROUP) {
+				//	user->SetError("SSL_R_NO_SHARED_GROUP");
+				//  return -1;
+				} else if (err == SSL_R_NO_SUITABLE_KEY_SHARE) {
+					user->SetError("SSL_R_NO_SUITABLE_KEY_SHARE");
+				    return -1;
+				} else if (err == SSL_R_NO_SUITABLE_SIGNATURE_ALGORITHM) {
+					user->SetError("SSL_R_NO_SUITABLE_SIGNATURE_ALGORITHM");
+				    return -1;
+				} else if (err == SSL_R_PARSE_TLSEXT) {
+					user->SetError("SSL_R_PARSE_TLSEXT");
+				    return -1;
+				} else if (err == SSL_R_RECORD_LENGTH_MISMATCH) {
+					user->SetError("SSL_R_RECORD_LENGTH_MISMATCH");
+				    return -1;
+				} else if (err == SSL_R_RENEGOTIATE_EXT_TOO_LONG) {
+					user->SetError("SSL_R_RENEGOTIATE_EXT_TOO_LONG");
+				    return -1;
+				} else if (err == SSL_R_RENEGOTIATION_ENCODING_ERR) {
+					user->SetError("SSL_R_RENEGOTIATION_ENCODING_ERR");
+				    return -1;
+				} else if (err == SSL_R_RENEGOTIATION_MISMATCH) {
+					user->SetError("SSL_R_RENEGOTIATION_MISMATCH");
+				    return -1;
+				} else if (err == SSL_R_SCSV_RECEIVED_WHEN_RENEGOTIATING) {
+					user->SetError("SSL_R_SCSV_RECEIVED_WHEN_RENEGOTIATING");
+				    return -1;
+				} else if (err == SSL_R_SSLV3_ALERT_BAD_CERTIFICATE) {
+					user->SetError("SSL_R_SSLV3_ALERT_BAD_CERTIFICATE");
+				    return -1;
+				} else if (err == SSL_R_SSLV3_ALERT_BAD_RECORD_MAC) {
+					user->SetError("SSL_R_SSLV3_ALERT_BAD_RECORD_MAC");
+				    return -1;
+				} else if (err == SSL_R_SSLV3_ALERT_CERTIFICATE_EXPIRED) {
+					user->SetError("SSL_R_SSLV3_ALERT_CERTIFICATE_EXPIRED");
+				    return -1;
+				} else if (err == SSL_R_SSLV3_ALERT_CERTIFICATE_REVOKED) {
+					user->SetError("SSL_R_SSLV3_ALERT_CERTIFICATE_REVOKED");
+				    return -1;
+				} else if (err == SSL_R_SSLV3_ALERT_CERTIFICATE_UNKNOWN) {
+					user->SetError("SSL_R_SSLV3_ALERT_CERTIFICATE_UNKNOWN");
+				    return -1;
+				} else if (err == SSL_R_SSLV3_ALERT_DECOMPRESSION_FAILURE) {
+					user->SetError("SSL_R_SSLV3_ALERT_DECOMPRESSION_FAILURE");
+				    return -1;
+				} else if (err == SSL_R_SSLV3_ALERT_HANDSHAKE_FAILURE) {
+					user->SetError("SSL_R_SSLV3_ALERT_HANDSHAKE_FAILURE");
+				    return -1;
+				} else if (err == SSL_R_SSLV3_ALERT_ILLEGAL_PARAMETER) {
+					user->SetError("SSL_R_SSLV3_ALERT_ILLEGAL_PARAMETER");
+				    return -1;
+				} else if (err == SSL_R_SSLV3_ALERT_NO_CERTIFICATE) {
+					user->SetError("SSL_R_SSLV3_ALERT_NO_CERTIFICATE");
+				    return -1;
+				} else if (err == SSL_R_SSLV3_ALERT_UNEXPECTED_MESSAGE) {
+					user->SetError("SSL_R_SSLV3_ALERT_UNEXPECTED_MESSAGE");
+				    return -1;
+				} else if (err == SSL_R_SSLV3_ALERT_UNSUPPORTED_CERTIFICATE) {
+					user->SetError("SSL_R_SSLV3_ALERT_UNSUPPORTED_CERTIFICATE");
+				    return -1;
+				} else if (err == SSL_R_TLSV1_ALERT_ACCESS_DENIED) {
+					user->SetError("SSL_R_TLSV1_ALERT_ACCESS_DENIED");
+				    return -1;
+				} else if (err == SSL_R_TLSV1_ALERT_DECODE_ERROR) {
+					user->SetError("SSL_R_TLSV1_ALERT_DECODE_ERROR");
+				    return -1;
+				} else if (err == SSL_R_TLSV1_ALERT_DECRYPT_ERROR) {
+					user->SetError("SSL_R_TLSV1_ALERT_DECRYPT_ERROR");
+				    return -1;
+				} else if (err == SSL_R_TLSV1_ALERT_DECRYPTION_FAILED) {
+					user->SetError("SSL_R_TLSV1_ALERT_DECRYPTION_FAILED");
+				    return -1;
+				} else if (err == SSL_R_TLSV1_ALERT_EXPORT_RESTRICTION) {
+					user->SetError("SSL_R_TLSV1_ALERT_EXPORT_RESTRICTION");
+				    return -1;
+				} else if (err == SSL_R_TLSV1_ALERT_INSUFFICIENT_SECURITY) {
+					user->SetError("SSL_R_TLSV1_ALERT_INSUFFICIENT_SECURITY");
+				    return -1;
+				} else if (err == SSL_R_TLSV1_ALERT_INTERNAL_ERROR) {
+					user->SetError("SSL_R_TLSV1_ALERT_INTERNAL_ERROR");
+				    return -1;
+				} else if (err == SSL_R_TLSV1_ALERT_NO_RENEGOTIATION) {
+					user->SetError("SSL_R_TLSV1_ALERT_NO_RENEGOTIATION");
+				    return -1;
+				} else if (err == SSL_R_TLSV1_ALERT_PROTOCOL_VERSION) {
+					user->SetError("SSL_R_TLSV1_ALERT_PROTOCOL_VERSION");
+				    return -1;
+				} else if (err == SSL_R_TLSV1_ALERT_RECORD_OVERFLOW) {
+					user->SetError("SSL_R_TLSV1_ALERT_RECORD_OVERFLOW");
+				    return -1;
+				} else if (err == SSL_R_TLSV1_ALERT_UNKNOWN_CA) {
+					user->SetError("SSL_R_TLSV1_ALERT_UNKNOWN_CA");
+				    return -1;
+				} else if (err == SSL_R_TLSV1_ALERT_USER_CANCELLED) {
+					user->SetError("SSL_R_TLSV1_ALERT_USER_CANCELLED");
+				    return -1;
+				} else if (err == SSL_R_UNEXPECTED_MESSAGE) {
+					user->SetError("SSL_R_UNEXPECTED_MESSAGE");
+				    return -1;
+				} else if (err == SSL_R_UNEXPECTED_RECORD) {
+					user->SetError("SSL_R_UNEXPECTED_RECORD");
+				    return -1;
+				} else if (err == SSL_R_UNKNOWN_ALERT_TYPE) {
+					user->SetError("SSL_R_UNKNOWN_ALERT_TYPE");
+				    return -1;
+				} else if (err == SSL_R_UNKNOWN_PROTOCOL) {
+					user->SetError("SSL_R_UNKNOWN_PROTOCOL");
+				    return -1;
+				} else if (err == SSL_R_UNSAFE_LEGACY_RENEGOTIATION_DISABLED) {
+					user->SetError("SSL_R_UNSAFE_LEGACY_RENEGOTIATION_DISABLED");
+				    return -1;
+				} else if (err == SSL_R_UNSUPPORTED_PROTOCOL) {
+					user->SetError("SSL_R_UNSUPPORTED_PROTOCOL");
+				    return -1;
+				} else if (err == SSL_R_VERSION_TOO_LOW) {
+					user->SetError("SSL_R_VERSION_TOO_LOW");
+				    return -1;
+				} else if (err == SSL_R_WRONG_VERSION_NUMBER) {
+					user->SetError("SSL_R_WRONG_VERSION_NUMBER");
+				    return -1;
+				}
 
 				if (err == SSL_ERROR_WANT_WRITE)
 				{
